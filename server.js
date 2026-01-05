@@ -240,22 +240,48 @@ app.post("/webhook", async (req, res) => {
 
 /* ---------------- SEND MESSAGE ---------------- */
 
-async function sendMessage(senderId, text) {
+async function getHFReply(userMessage) {
   try {
-    await axios.post(
-      "https://graph.facebook.com/v18.0/me/messages",
+    const response = await axios.post(
+      "https://router.huggingface.co/hf-inference/text-generation/HuggingFaceH4/zephyr-7b-beta",
       {
-        recipient: { id: senderId },
-        message: { text }
+        inputs: `
+You are a Facebook Messenger business chatbot.
+
+Rules:
+- Reply short & clear
+- Language: Hinglish
+- Be polite
+- Do NOT promise discounts
+- If user asks price, say ₹499
+
+User message: ${userMessage}
+`,
+        parameters: {
+          max_new_tokens: 120,
+          temperature: 0.6,
+          return_full_text: false
+        }
       },
       {
-        params: { access_token: PAGE_ACCESS_TOKEN }
+        headers: {
+          Authorization: `Bearer ${process.env.HF_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        timeout: 30000
       }
     );
+
+    return (
+      response.data?.[0]?.generated_text ||
+      "Samajh nahi aaya 😅 Thoda clear batao."
+    );
   } catch (err) {
-    console.error("Send message error:", err.response?.data || err.message);
+    console.error("HF error:", err.response?.data || err.message);
+    return "Abhi system busy hai 😅 Thodi der baad try karo.";
   }
 }
+
 
 /* ---------------- START SERVER ---------------- */
 
