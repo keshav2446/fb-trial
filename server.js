@@ -160,21 +160,87 @@ async function sendVideo(senderId, videoUrl) {
   );
 }
 
+/* ---------------- SEND TEMPLATE (CARD) ---------------- */
+
+async function sendDemoTemplate(senderId) {
+  await axios.post(
+    "https://graph.facebook.com/v18.0/me/messages",
+    {
+      recipient: { id: senderId },
+      message: {
+        attachment: {
+          type: "template",
+          payload: {
+            template_type: "generic",
+            elements: [
+              {
+                title: "Facebook Automation Demo",
+                subtitle: "Auto replies, leads & chatbot 🤖",
+                image_url: "https://picsum.photos/600/400",
+                buttons: [
+                  {
+                    type: "postback",
+                    title: "📹 Watch Demo Video",
+                    payload: "WATCH_DEMO_VIDEO"
+                  },
+                  {
+                    type: "postback",
+                    title: "💰 Pricing",
+                    payload: "GET_PRICE"
+                  },
+                  {
+                    type: "postback",
+                    title: "📞 Contact",
+                    payload: "CONTACT_US"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    { params: { access_token: PAGE_ACCESS_TOKEN } }
+  );
+}
+
 /* ---------------- RECEIVE MESSAGE ---------------- */
 
 app.post("/webhook", async (req, res) => {
   try {
     const event = req.body.entry?.[0]?.messaging?.[0];
-    if (!event || !event.message?.text) {
+    if (!event) return res.sendStatus(200);
+
+    const senderId = event.sender.id;
+
+    /* ---------- POSTBACK (BUTTON CLICK) ---------- */
+    if (event.postback) {
+      const payload = event.postback.payload;
+
+      if (payload === "WATCH_DEMO_VIDEO") {
+        await sendText(senderId, "Demo video dekhiye 🎥");
+        await sendVideo(
+          senderId,
+          "https://www.w3schools.com/html/mov_bbb.mp4"
+        );
+      }
+
+      if (payload === "GET_PRICE") {
+        await sendText(senderId, "Pricing ₹499 se start hoti hai 💰");
+      }
+
+      if (payload === "CONTACT_US") {
+        await sendText(senderId, "WhatsApp: +91XXXXXXXXXX 📞");
+      }
+
       return res.sendStatus(200);
     }
 
-    const senderId = event.sender.id;
+    /* ---------- NORMAL TEXT MESSAGE ---------- */
+    if (!event.message?.text) return res.sendStatus(200);
+
     const msg = normalize(event.message.text);
-
     console.log("Message:", msg);
-
-    /* ---------- BASIC RULES ---------- */
 
     if (["hi", "hello", "hii", "hey"].includes(msg)) {
       await sendText(senderId, "Hi 👋 Kaise help kar sakta hoon?");
@@ -194,30 +260,13 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    /* ---------- DEMO IMAGE ---------- */
-
+    /* ---------- TEMPLATE DEMO ---------- */
     if (msg.includes("demo")) {
-      await sendText(senderId, "Yeh demo image dekhiye 👇");
-      await sendImage(
-        senderId,
-        "https://picsum.photos/600/400"
-      );
-      return res.sendStatus(200);
-    }
-
-    /* ---------- DEMO VIDEO ---------- */
-
-    if (msg.includes("video")) {
-      await sendText(senderId, "Yeh demo video dekhiye 🎥");
-      await sendVideo(
-        senderId,
-        "https://www.w3schools.com/html/mov_bbb.mp4"
-      );
+      await sendDemoTemplate(senderId);
       return res.sendStatus(200);
     }
 
     /* ---------- FALLBACK ---------- */
-
     await sendText(
       senderId,
       "Samajh nahi aaya 😅 demo / price / automation likh ke try karo"
@@ -236,6 +285,5 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
 
 
