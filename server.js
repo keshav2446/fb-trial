@@ -173,12 +173,12 @@ function getRuleReply(message) {
   return null;
 }
 
-/* ---------------- HUGGING FACE AI (FINAL WORKING) ---------------- */
+/* ---------------- HUGGING FACE AI (ONLY ONE FUNCTION) ---------------- */
 
 async function getHFReply(userMessage) {
   try {
     const response = await axios.post(
-      "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta",
+      "https://router.huggingface.co/hf-inference/text-generation/HuggingFaceH4/zephyr-7b-beta",
       {
         inputs: `
 You are a Facebook Messenger business chatbot.
@@ -191,7 +191,12 @@ Rules:
 - If user asks price, say ₹499
 
 User message: ${userMessage}
-`
+`,
+        parameters: {
+          max_new_tokens: 120,
+          temperature: 0.6,
+          return_full_text: false
+        }
       },
       {
         headers: {
@@ -240,48 +245,22 @@ app.post("/webhook", async (req, res) => {
 
 /* ---------------- SEND MESSAGE ---------------- */
 
-async function getHFReply(userMessage) {
+async function sendMessage(senderId, text) {
   try {
-    const response = await axios.post(
-      "https://router.huggingface.co/hf-inference/text-generation/HuggingFaceH4/zephyr-7b-beta",
+    await axios.post(
+      "https://graph.facebook.com/v18.0/me/messages",
       {
-        inputs: `
-You are a Facebook Messenger business chatbot.
-
-Rules:
-- Reply short & clear
-- Language: Hinglish
-- Be polite
-- Do NOT promise discounts
-- If user asks price, say ₹499
-
-User message: ${userMessage}
-`,
-        parameters: {
-          max_new_tokens: 120,
-          temperature: 0.6,
-          return_full_text: false
-        }
+        recipient: { id: senderId },
+        message: { text }
       },
       {
-        headers: {
-          Authorization: `Bearer ${process.env.HF_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        timeout: 30000
+        params: { access_token: PAGE_ACCESS_TOKEN }
       }
     );
-
-    return (
-      response.data?.[0]?.generated_text ||
-      "Samajh nahi aaya 😅 Thoda clear batao."
-    );
   } catch (err) {
-    console.error("HF error:", err.response?.data || err.message);
-    return "Abhi system busy hai 😅 Thodi der baad try karo.";
+    console.error("Send message error:", err.response?.data || err.message);
   }
 }
-
 
 /* ---------------- START SERVER ---------------- */
 
