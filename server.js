@@ -84,7 +84,7 @@ app.use(bodyParser.json());
 
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
-const HF_API_KEY = process.env.HF_API_KEY;
+const HF_API_KEY = process.env.HF_API_KEY; // optional
 
 /* ---------------- HEALTH CHECK ---------------- */
 app.get("/", (req, res) => {
@@ -98,59 +98,38 @@ app.get("/webhook", (req, res) => {
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("Webhook verified");
     return res.status(200).send(challenge);
   }
   return res.sendStatus(403);
 });
 
-/* ---------------- CHATBOT RULE ENGINE ---------------- */
+/* ---------------- RULE ENGINE ---------------- */
 
 const rules = [
   {
-    keywords: ["hi", "hello", "hey", "hii", "hy"],
+    keywords: ["hi", "hello", "hey"],
     replies: [
       "Hi 👋 Kaise help kar sakta hoon?",
-      "Hello 😊 Batao kya madad chahiye?",
-      "Hey 👋 Welcome! Kya jaan na hai?"
+      "Hello 😊 Batao kya madad chahiye?"
     ]
   },
   {
-    keywords: ["price", "pricing", "cost", "rate", "charges"],
+    keywords: ["price", "pricing", "cost"],
     replies: [
-      "Humari service ₹499 se start hoti hai 💰",
-      "Pricing ₹499 hai. Aapko kis cheez ke liye chahiye?"
+      "Humari service ₹499 se start hoti hai 💰"
     ]
   },
   {
-    keywords: ["service", "services", "offer", "kaam"],
+    keywords: ["service", "automation", "chatbot"],
     replies: [
-      "Hum automation aur chatbot services provide karte hain 🤖",
-      "Hum FB / IG automation setup karte hain 💼"
+      "Hum Facebook & Instagram automation provide karte hain 🤖"
     ]
   },
   {
-    keywords: ["contact", "number", "phone", "call"],
+    keywords: ["contact", "number", "phone"],
     replies: [
-      "Aap hume WhatsApp pe contact kar sakte ho 📞",
-      "Contact ke liye please message chhod do 😊"
+      "Aap hume WhatsApp pe contact kar sakte ho 📞"
     ]
-  },
-  {
-    keywords: ["time", "timing", "hours", "open"],
-    replies: ["Hum Monday–Saturday, 10AM–7PM available hain ⏰"]
-  },
-  {
-    keywords: ["location", "address", "office"],
-    replies: ["Hum online services provide karte hain 🌐"]
-  },
-  {
-    keywords: ["thanks", "thank you", "thx"],
-    replies: ["Welcome 😊", "Aapka swagat hai 🙌"]
-  },
-  {
-    keywords: ["bye", "goodbye", "exit"],
-    replies: ["Bye 👋 Phir milte hain!", "Thank you! 👋"]
   }
 ];
 
@@ -173,94 +152,139 @@ function getRuleReply(message) {
   return null;
 }
 
-/* ---------------- HUGGING FACE AI (ONLY ONE FUNCTION) ---------------- */
+/* ---------------- SEND TEXT ---------------- */
+
+async function sendMessage(senderId, text) {
+  await axios.post(
+    "https://graph.facebook.com/v18.0/me/messages",
+    {
+      recipient: { id: senderId },
+      message: { text }
+    },
+    {
+      params: { access_token: PAGE_ACCESS_TOKEN }
+    }
+  );
+}
+
+/* ---------------- SEND IMAGE ---------------- */
+
+async function sendImage(senderId, imageUrl) {
+  await axios.post(
+    "https://graph.facebook.com/v18.0/me/messages",
+    {
+      recipient: { id: senderId },
+      message: {
+        attachment: {
+          type: "image",
+          payload: {
+            url: imageUrl,
+            is_reusable: true
+          }
+        }
+      }
+    },
+    {
+      params: { access_token: PAGE_ACCESS_TOKEN }
+    }
+  );
+}
+
+/* ---------------- SEND VIDEO ---------------- */
+
+async function sendVideo(senderId, videoUrl) {
+  await axios.post(
+    "https://graph.facebook.com/v18.0/me/messages",
+    {
+      recipient: { id: senderId },
+      message: {
+        attachment: {
+          type: "video",
+          payload: {
+            url: videoUrl
+          }
+        }
+      }
+    },
+    {
+      params: { access_token: PAGE_ACCESS_TOKEN }
+    }
+  );
+}
+
+/* ---------------- OPTIONAL AI (SAFE) ---------------- */
 
 async function getHFReply(userMessage) {
   try {
-    const response = await axios.post(
-      "https://router.huggingface.co/hf-inference/text-generation/HuggingFaceH4/zephyr-7b-beta",
+    const res = await axios.post(
+      "https://router.huggingface.co/hf-inference/text-generation/google/gemma-2b-it",
       {
-        inputs: `
-You are a Facebook Messenger business chatbot.
-
-Rules:
-- Reply short & clear
-- Language: Hinglish
-- Be polite
-- Do NOT promise discounts
-- If user asks price, say ₹499
-
-User message: ${userMessage}
-`,
-        parameters: {
-          max_new_tokens: 120,
-          temperature: 0.6,
-          return_full_text: false
-        }
+        inputs: userMessage,
+        parameters: { max_new_tokens: 100 }
       },
       {
         headers: {
           Authorization: `Bearer ${HF_API_KEY}`,
           "Content-Type": "application/json"
         },
-        timeout: 30000
+        timeout: 20000
       }
     );
 
-    return (
-      response.data?.[0]?.generated_text ||
-      "Samajh nahi aaya 😅 Thoda clear batao."
-    );
-  } catch (err) {
-    console.error("HF error:", err.response?.data || err.message);
-    return "Abhi system busy hai 😅 Thodi der baad try karo.";
+    return res.data?.[0]?.generated_text;
+  } catch {
+    return null;
   }
 }
 
-/* ---------------- RECEIVE MESSAGE ---------------- */
+/* ---------------- WEBHOOK ---------------- */
 
 app.post("/webhook", async (req, res) => {
-  const entry = req.body.entry?.[0];
-  const event = entry?.messaging?.[0];
-
+  const event = req.body.entry?.[0]?.messaging?.[0];
   if (!event) return res.sendStatus(200);
 
   const senderId = event.sender.id;
 
   if (event.message?.text) {
     const userMessage = normalize(event.message.text);
-    console.log("Message received:", userMessage);
 
+    /* ---- DEMO IMAGE ---- */
+    if (userMessage.includes("demo")) {
+      await sendMessage(senderId, "Yeh demo image dekhiye 👇");
+      await sendImage(
+        senderId,
+        "https://via.placeholder.com/600x400"
+      );
+      return res.sendStatus(200);
+    }
+
+    /* ---- DEMO VIDEO ---- */
+    if (userMessage.includes("video")) {
+      await sendMessage(senderId, "Video demo bhej raha hoon 🎥");
+      await sendVideo(
+        senderId,
+        "https://www.w3schools.com/html/mov_bbb.mp4"
+      );
+      return res.sendStatus(200);
+    }
+
+    /* ---- RULE BASED ---- */
     let reply = getRuleReply(userMessage);
 
-    if (!reply) {
+    /* ---- AI FALLBACK (OPTIONAL) ---- */
+    if (!reply && HF_API_KEY) {
       reply = await getHFReply(userMessage);
+    }
+
+    if (!reply) {
+      reply = "Thanks for your message 😊 Team aapse contact karegi.";
     }
 
     await sendMessage(senderId, reply);
   }
 
-  res.status(200).send("EVENT_RECEIVED");
+  res.sendStatus(200);
 });
-
-/* ---------------- SEND MESSAGE ---------------- */
-
-async function sendMessage(senderId, text) {
-  try {
-    await axios.post(
-      "https://graph.facebook.com/v18.0/me/messages",
-      {
-        recipient: { id: senderId },
-        message: { text }
-      },
-      {
-        params: { access_token: PAGE_ACCESS_TOKEN }
-      }
-    );
-  } catch (err) {
-    console.error("Send message error:", err.response?.data || err.message);
-  }
-}
 
 /* ---------------- START SERVER ---------------- */
 
@@ -268,4 +292,5 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
 
