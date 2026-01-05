@@ -173,12 +173,12 @@ function getRuleReply(message) {
   return null;
 }
 
-/* ---------------- HUGGING FACE AI (NEW ROUTER) ---------------- */
+/* ---------------- HUGGING FACE AI (FINAL WORKING) ---------------- */
 
 async function getHFReply(userMessage) {
   try {
     const response = await axios.post(
-      "https://router.huggingface.co/hf-inference/models/mistralai/Mistral-7B-Instruct-v0.2",
+      "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta",
       {
         inputs: `
 You are a Facebook Messenger business chatbot.
@@ -226,10 +226,8 @@ app.post("/webhook", async (req, res) => {
     const userMessage = normalize(event.message.text);
     console.log("Message received:", userMessage);
 
-    // 1️⃣ Manual keyword reply
     let reply = getRuleReply(userMessage);
 
-    // 2️⃣ AI fallback (HF)
     if (!reply) {
       reply = await getHFReply(userMessage);
     }
