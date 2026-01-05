@@ -138,33 +138,23 @@ const rules = [
   },
   {
     keywords: ["time", "timing", "hours", "open"],
-    replies: [
-      "Hum Monday–Saturday, 10AM–7PM available hain ⏰"
-    ]
+    replies: ["Hum Monday–Saturday, 10AM–7PM available hain ⏰"]
   },
   {
     keywords: ["location", "address", "office"],
-    replies: [
-      "Hum online services provide karte hain 🌐"
-    ]
+    replies: ["Hum online services provide karte hain 🌐"]
   },
   {
     keywords: ["thanks", "thank you", "thx"],
-    replies: [
-      "Welcome 😊",
-      "Aapka swagat hai 🙌"
-    ]
+    replies: ["Welcome 😊", "Aapka swagat hai 🙌"]
   },
   {
     keywords: ["bye", "goodbye", "exit"],
-    replies: [
-      "Bye 👋 Phir milte hain!",
-      "Thank you! 👋"
-    ]
+    replies: ["Bye 👋 Phir milte hain!", "Thank you! 👋"]
   }
 ];
 
-/* ---------------- HELPER FUNCTIONS ---------------- */
+/* ---------------- HELPERS ---------------- */
 
 function normalize(text) {
   return text.toLowerCase().trim();
@@ -183,12 +173,12 @@ function getRuleReply(message) {
   return null;
 }
 
-/* ---------------- HUGGING FACE AI (FREE FALLBACK) ---------------- */
+/* ---------------- HUGGING FACE AI (NEW ROUTER) ---------------- */
 
 async function getHFReply(userMessage) {
   try {
     const response = await axios.post(
-      "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
+      "https://router.huggingface.co/hf-inference/models/mistralai/Mistral-7B-Instruct-v0.2",
       {
         inputs: `
 You are a Facebook Messenger business chatbot.
@@ -239,7 +229,7 @@ app.post("/webhook", async (req, res) => {
     // 1️⃣ Manual keyword reply
     let reply = getRuleReply(userMessage);
 
-    // 2️⃣ AI fallback (Hugging Face)
+    // 2️⃣ AI fallback (HF)
     if (!reply) {
       reply = await getHFReply(userMessage);
     }
@@ -275,3 +265,4 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
