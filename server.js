@@ -84,7 +84,6 @@ app.use(bodyParser.json());
 
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
-const HF_API_KEY = process.env.HF_API_KEY; // optional
 
 /* ---------------- HEALTH CHECK ---------------- */
 app.get("/", (req, res) => {
@@ -103,67 +102,22 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-/* ---------------- RULE ENGINE ---------------- */
-
-const rules = [
-  {
-    keywords: ["hi", "hello", "hey"],
-    replies: [
-      "Hi 👋 Kaise help kar sakta hoon?",
-      "Hello 😊 Batao kya madad chahiye?"
-    ]
-  },
-  {
-    keywords: ["price", "pricing", "cost"],
-    replies: [
-      "Humari service ₹499 se start hoti hai 💰"
-    ]
-  },
-  {
-    keywords: ["service", "automation", "chatbot"],
-    replies: [
-      "Hum Facebook & Instagram automation provide karte hain 🤖"
-    ]
-  },
-  {
-    keywords: ["contact", "number", "phone"],
-    replies: [
-      "Aap hume WhatsApp pe contact kar sakte ho 📞"
-    ]
-  }
-];
-
 /* ---------------- HELPERS ---------------- */
 
 function normalize(text) {
   return text.toLowerCase().trim();
 }
 
-function randomReply(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function getRuleReply(message) {
-  for (const rule of rules) {
-    if (rule.keywords.some(k => message.includes(k))) {
-      return randomReply(rule.replies);
-    }
-  }
-  return null;
-}
-
 /* ---------------- SEND TEXT ---------------- */
 
-async function sendMessage(senderId, text) {
+async function sendText(senderId, text) {
   await axios.post(
     "https://graph.facebook.com/v18.0/me/messages",
     {
       recipient: { id: senderId },
       message: { text }
     },
-    {
-      params: { access_token: PAGE_ACCESS_TOKEN }
-    }
+    { params: { access_token: PAGE_ACCESS_TOKEN } }
   );
 }
 
@@ -184,9 +138,7 @@ async function sendImage(senderId, imageUrl) {
         }
       }
     },
-    {
-      params: { access_token: PAGE_ACCESS_TOKEN }
-    }
+    { params: { access_token: PAGE_ACCESS_TOKEN } }
   );
 }
 
@@ -200,67 +152,63 @@ async function sendVideo(senderId, videoUrl) {
       message: {
         attachment: {
           type: "video",
-          payload: {
-            url: videoUrl
-          }
+          payload: { url: videoUrl }
         }
       }
     },
-    {
-      params: { access_token: PAGE_ACCESS_TOKEN }
-    }
+    { params: { access_token: PAGE_ACCESS_TOKEN } }
   );
 }
 
-/* ---------------- OPTIONAL AI (SAFE) ---------------- */
-
-async function getHFReply(userMessage) {
-  try {
-    const res = await axios.post(
-      "https://router.huggingface.co/hf-inference/text-generation/google/gemma-2b-it",
-      {
-        inputs: userMessage,
-        parameters: { max_new_tokens: 100 }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${HF_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        timeout: 20000
-      }
-    );
-
-    return res.data?.[0]?.generated_text;
-  } catch {
-    return null;
-  }
-}
-
-/* ---------------- WEBHOOK ---------------- */
+/* ---------------- RECEIVE MESSAGE ---------------- */
 
 app.post("/webhook", async (req, res) => {
-  const event = req.body.entry?.[0]?.messaging?.[0];
-  if (!event) return res.sendStatus(200);
+  try {
+    const event = req.body.entry?.[0]?.messaging?.[0];
+    if (!event || !event.message?.text) {
+      return res.sendStatus(200);
+    }
 
-  const senderId = event.sender.id;
+    const senderId = event.sender.id;
+    const msg = normalize(event.message.text);
 
-  if (event.message?.text) {
-    const userMessage = normalize(event.message.text);
+    console.log("Message:", msg);
 
-    /* ---- DEMO IMAGE ---- */
-    if (userMessage.includes("demo")) {
-      await sendMessage(senderId, "Yeh demo image dekhiye 👇");
-      await sendImage(
+    /* ---------- BASIC RULES ---------- */
+
+    if (["hi", "hello", "hii", "hey"].includes(msg)) {
+      await sendText(senderId, "Hi 👋 Kaise help kar sakta hoon?");
+      return res.sendStatus(200);
+    }
+
+    if (msg.includes("price")) {
+      await sendText(senderId, "Humari service ₹499 se start hoti hai 💰");
+      return res.sendStatus(200);
+    }
+
+    if (msg.includes("automation")) {
+      await sendText(
         senderId,
-        "https://via.placeholder.com/600x400"
+        "Hum Facebook & Instagram automation provide karte hain 🤖"
       );
       return res.sendStatus(200);
     }
 
-    /* ---- DEMO VIDEO ---- */
-    if (userMessage.includes("video")) {
-      await sendMessage(senderId, "Video demo bhej raha hoon 🎥");
+    /* ---------- DEMO IMAGE ---------- */
+
+    if (msg.includes("demo")) {
+      await sendText(senderId, "Yeh demo image dekhiye 👇");
+      await sendImage(
+        senderId,
+        "https://picsum.photos/600/400"
+      );
+      return res.sendStatus(200);
+    }
+
+    /* ---------- DEMO VIDEO ---------- */
+
+    if (msg.includes("video")) {
+      await sendText(senderId, "Yeh demo video dekhiye 🎥");
       await sendVideo(
         senderId,
         "https://www.w3schools.com/html/mov_bbb.mp4"
@@ -268,22 +216,18 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    /* ---- RULE BASED ---- */
-    let reply = getRuleReply(userMessage);
+    /* ---------- FALLBACK ---------- */
 
-    /* ---- AI FALLBACK (OPTIONAL) ---- */
-    if (!reply && HF_API_KEY) {
-      reply = await getHFReply(userMessage);
-    }
+    await sendText(
+      senderId,
+      "Samajh nahi aaya 😅 demo / price / automation likh ke try karo"
+    );
+    return res.sendStatus(200);
 
-    if (!reply) {
-      reply = "Thanks for your message 😊 Team aapse contact karegi.";
-    }
-
-    await sendMessage(senderId, reply);
+  } catch (err) {
+    console.error("Webhook error:", err.response?.data || err.message);
+    return res.sendStatus(200);
   }
-
-  res.sendStatus(200);
 });
 
 /* ---------------- START SERVER ---------------- */
@@ -292,5 +236,6 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
 
 
