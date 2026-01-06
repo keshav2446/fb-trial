@@ -82,15 +82,23 @@ import axios from "axios";
 const app = express();
 app.use(bodyParser.json());
 
+/* ================= ENV ================= */
+
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
-/* ---------------- HEALTH CHECK ---------------- */
+// WhatsApp (TEST MODE)
+const WA_PHONE_NUMBER_ID = process.env.WA_PHONE_NUMBER_ID;
+const WA_TEMP_TOKEN = process.env.WA_TEMP_TOKEN;
+
+/* ================= HEALTH ================= */
+
 app.get("/", (req, res) => {
-  res.send("Messenger bot is running 🚀");
+  res.send("FB + WhatsApp bot running 🚀");
 });
 
-/* ---------------- WEBHOOK VERIFY ---------------- */
+/* ================= WEBHOOK VERIFY ================= */
+
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -102,15 +110,15 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-/* ---------------- HELPERS ---------------- */
+/* ================= HELPERS ================= */
 
 function normalize(text) {
   return text.toLowerCase().trim();
 }
 
-/* ---------------- SEND TEXT ---------------- */
+/* ================= FACEBOOK SEND ================= */
 
-async function sendText(senderId, text) {
+async function sendFBText(senderId, text) {
   await axios.post(
     "https://graph.facebook.com/v18.0/me/messages",
     {
@@ -121,9 +129,7 @@ async function sendText(senderId, text) {
   );
 }
 
-/* ---------------- SEND IMAGE ---------------- */
-
-async function sendImage(senderId, imageUrl) {
+async function sendFBImage(senderId, imageUrl) {
   await axios.post(
     "https://graph.facebook.com/v18.0/me/messages",
     {
@@ -131,10 +137,7 @@ async function sendImage(senderId, imageUrl) {
       message: {
         attachment: {
           type: "image",
-          payload: {
-            url: imageUrl,
-            is_reusable: true
-          }
+          payload: { url: imageUrl, is_reusable: true }
         }
       }
     },
@@ -142,9 +145,7 @@ async function sendImage(senderId, imageUrl) {
   );
 }
 
-/* ---------------- SEND VIDEO ---------------- */
-
-async function sendVideo(senderId, videoUrl) {
+async function sendFBVideo(senderId, videoUrl) {
   await axios.post(
     "https://graph.facebook.com/v18.0/me/messages",
     {
@@ -160,9 +161,7 @@ async function sendVideo(senderId, videoUrl) {
   );
 }
 
-/* ---------------- SEND TEMPLATE (CARD) ---------------- */
-
-async function sendDemoTemplate(senderId) {
+async function sendFBTemplate(senderId) {
   await axios.post(
     "https://graph.facebook.com/v18.0/me/messages",
     {
@@ -204,86 +203,131 @@ async function sendDemoTemplate(senderId) {
   );
 }
 
-/* ---------------- RECEIVE MESSAGE ---------------- */
+/* ================= WHATSAPP SEND ================= */
+
+async function sendWhatsAppText(to, text) {
+  await axios.post(
+    `https://graph.facebook.com/v19.0/${WA_PHONE_NUMBER_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "text",
+      text: { body: text }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${WA_TEMP_TOKEN}`,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+}
+
+/* ================= WEBHOOK RECEIVE ================= */
 
 app.post("/webhook", async (req, res) => {
   try {
+    /* ---------- WHATSAPP ---------- */
+    const waMsg =
+      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+
+    if (waMsg) {
+      const from = waMsg.from;
+      const text = waMsg.text?.body?.toLowerCase();
+
+      console.log("WA:", text);
+
+      if (["hi", "hello", "hii", "hey"].includes(text)) {
+        await sendWhatsAppText(from, "Hello 👋 WhatsApp bot working!");
+        return res.sendStatus(200);
+      }
+
+      if (text?.includes("price")) {
+        await sendWhatsAppText(from, "Pricing ₹499 se start hoti hai 💰");
+        return res.sendStatus(200);
+      }
+
+      await sendWhatsAppText(
+        from,
+        "Samajh nahi aaya 😅 hi / price likh ke try karo"
+      );
+      return res.sendStatus(200);
+    }
+
+    /* ---------- FACEBOOK MESSENGER ---------- */
     const event = req.body.entry?.[0]?.messaging?.[0];
     if (!event) return res.sendStatus(200);
 
     const senderId = event.sender.id;
 
-    /* ---------- POSTBACK (BUTTON CLICK) ---------- */
     if (event.postback) {
       const payload = event.postback.payload;
 
       if (payload === "WATCH_DEMO_VIDEO") {
-        await sendText(senderId, "Demo video dekhiye 🎥");
-        await sendVideo(
+        await sendFBText(senderId, "Demo video dekhiye 🎥");
+        await sendFBVideo(
           senderId,
           "https://www.w3schools.com/html/mov_bbb.mp4"
         );
       }
 
       if (payload === "GET_PRICE") {
-        await sendText(senderId, "Pricing ₹499 se start hoti hai 💰");
+        await sendFBText(senderId, "Pricing ₹499 se start hoti hai 💰");
       }
 
       if (payload === "CONTACT_US") {
-        await sendText(senderId, "WhatsApp: +91XXXXXXXXXX 📞");
+        await sendFBText(senderId, "WhatsApp: +91XXXXXXXXXX 📞");
       }
 
       return res.sendStatus(200);
     }
 
-    /* ---------- NORMAL TEXT MESSAGE ---------- */
     if (!event.message?.text) return res.sendStatus(200);
 
     const msg = normalize(event.message.text);
-    console.log("Message:", msg);
+    console.log("FB:", msg);
 
     if (["hi", "hello", "hii", "hey"].includes(msg)) {
-      await sendText(senderId, "Hi 👋 Kaise help kar sakta hoon?");
+      await sendFBText(senderId, "Hi 👋 Kaise help kar sakta hoon?");
       return res.sendStatus(200);
     }
 
     if (msg.includes("price")) {
-      await sendText(senderId, "Humari service ₹499 se start hoti hai 💰");
+      await sendFBText(senderId, "Humari service ₹499 se start hoti hai 💰");
       return res.sendStatus(200);
     }
 
     if (msg.includes("automation")) {
-      await sendText(
+      await sendFBText(
         senderId,
         "Hum Facebook & Instagram automation provide karte hain 🤖"
       );
       return res.sendStatus(200);
     }
 
-    /* ---------- TEMPLATE DEMO ---------- */
     if (msg.includes("demo")) {
-      await sendDemoTemplate(senderId);
+      await sendFBTemplate(senderId);
       return res.sendStatus(200);
     }
 
-    /* ---------- FALLBACK ---------- */
-    await sendText(
+    await sendFBText(
       senderId,
       "Samajh nahi aaya 😅 demo / price / automation likh ke try karo"
     );
-    return res.sendStatus(200);
 
+    return res.sendStatus(200);
   } catch (err) {
     console.error("Webhook error:", err.response?.data || err.message);
     return res.sendStatus(200);
   }
 });
 
-/* ---------------- START SERVER ---------------- */
+/* ================= START ================= */
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
 
 
